@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="cyber">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuraFocus - 口袋专注机</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <symbol id="icon-pin" viewBox="0 0 24 24"><path d="m9 3 6 0-1 6 4 4v2H6v-2l4-4-1-6ZM12 15v6"/></symbol>
+      <symbol id="icon-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+      <symbol id="icon-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7V5Z"/></symbol>
+      <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+      <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></symbol>
+      <symbol id="icon-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="icon-note" viewBox="0 0 24 24"><path d="M4 5h16v10l-4 4H4V5Zm12 14v-4h4"/></symbol>
+      <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Zm13.5 3a4.5 4.5 0 0 0-2-3.7v7.4a4.5 4.5 0 0 0 2-3.7Z"/></symbol>
+      <symbol id="icon-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Zm12 0 5 6m0-6-5 6"/></symbol>
+      <symbol id="icon-flag" viewBox="0 0 24 24"><path d="M5 4v16M5 5h11l-2 4 2 4H5"/></symbol>
+      <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"/></symbol>
+      <symbol id="icon-sliders" viewBox="0 0 24 24"><path d="M4 7h10m4 0h2M4 12h4m4 0h8M4 17h12m4 0h0M14 5v4M8 10v4M16 15v4"/></symbol>
+    </defs>
+  </svg>
+  <div id="app-container" class="app-pixel-box">
+    <!-- Edge Peek Strip (20x68) -->
+    <div id="peek-view" class="peek-view hidden" title="移入展开 AuraFocus">
+      <span class="peek-dot" aria-hidden="true"></span>
+      <div id="peek-progress-fill" class="peek-progress-track"><span class="peek-progress-bar"></span></div>
+    </div>
+
+    <!-- Compact Capsule View (290x68) -->
+    <div id="capsule-view" class="capsule-view">
+      <div class="mini-top-bar">
+        <div class="pixel-drag-grip"><span class="power-dot" aria-hidden="true"></span><span class="grip-title">AuraFocus</span><span class="grip-dots" aria-hidden="true"></span></div>
+        <div class="mini-quick-btns no-drag">
+          <button id="btn-capsule-park" class="btn-pixel-icon" title="速记分心念头 (Alt+Shift+N)" aria-label="速记分心念头"><svg class="icon"><use href="#icon-note"/></svg></button>
+          <button id="btn-capsule-mute" class="btn-pixel-icon" title="静音/恢复环境音" aria-label="静音环境音" aria-pressed="false"><svg class="icon"><use id="capsule-mute-icon" href="#icon-volume"/></svg></button>
+          <button id="btn-capsule-pin" class="btn-pixel-icon" title="始终置顶" aria-label="始终置顶" aria-pressed="true"><svg class="icon"><use href="#icon-pin"/></svg></button>
+          <button id="btn-capsule-expand" class="btn-pixel-icon" title="展开面板" aria-label="展开面板"><svg class="icon"><use href="#icon-expand"/></svg></button>
+          <button id="btn-capsule-close" class="btn-pixel-icon btn-close" title="关闭/托盘" aria-label="关闭程序"><svg class="icon"><use href="#icon-close"/></svg></button>
+        </div>
+      </div>
+      <div id="capsule-main-row" class="mini-main-row">
+        <button id="mini-mascot-box" class="pixel-mascot-frame no-drag" title="切换像素伴侣" aria-label="切换像素伴侣"><span id="mini-mascot-svg"></span></button>
+        <div class="mini-clock-column">
+          <div class="mini-time-row"><span id="capsule-time" class="pixel-digits">25:00</span><div id="capsule-segments" class="pixel-segment-bar" aria-hidden="true"></div></div>
+          <div id="capsule-subtext" class="pixel-subtext">准备好，专注一件事</div>
+        </div>
+        <div class="mini-actions no-drag">
+          <button id="btn-capsule-toggle" class="btn-pixel btn-pixel-primary" title="开始专注" aria-label="开始专注"><svg class="icon"><use id="capsule-play-icon" href="#icon-play"/></svg><span id="capsule-toggle-label" class="sr-only">开始专注</span></button>
+          <button id="btn-capsule-finish" class="btn-pixel btn-pixel-accent hidden" title="收工结算" aria-label="收工结算"><svg class="icon"><use href="#icon-check"/></svg></button>
+          <button id="btn-capsule-reset" class="btn-pixel btn-pixel-subtle" title="重置计时" aria-label="重置计时"><svg class="icon"><use href="#icon-reset"/></svg></button>
+        </div>
+      </div>
+      <div id="capsule-park-row" class="mini-park-row hidden no-drag">
+        <input type="text" id="capsule-park-input" class="pixel-input mini-park-input" placeholder="记下分心念头，回车收起..." maxlength="60">
+        <button id="btn-capsule-park-save" class="btn-pixel btn-pixel-primary mini-park-btn" title="保存念头" aria-label="保存念头"><svg class="icon"><use href="#icon-check"/></svg></button>
+        <button id="btn-capsule-park-cancel" class="btn-pixel btn-pixel-subtle mini-park-btn" title="取消" aria-label="取消"><svg class="icon"><use href="#icon-close"/></svg></button>
+      </div>
+    </div>
+
+    <!-- Expanded Pocket Console View (400x640) -->
+    <div id="card-view" class="card-view">
+      <header class="card-header">
+        <div class="header-left"><div id="card-mascot-avatar" class="avatar-small" aria-hidden="true"></div><div class="wordmark"><span class="pixel-logo">AuraFocus</span><span class="pixel-version">口袋专注机 v2</span></div></div>
+        <div class="header-right no-drag">
+          <button id="btn-card-park" class="btn-pixel-icon" title="速记分心念头" aria-label="速记分心念头"><svg class="icon"><use href="#icon-note"/></svg></button>
+          <button id="btn-pin-top" class="btn-pixel-icon" title="始终置顶" aria-label="始终置顶" aria-pressed="true"><svg class="icon"><use href="#icon-pin"/></svg></button>
+          <button id="btn-collapse-top" class="btn-pixel-icon" title="收起为浮动条" aria-label="收起为浮动条"><svg class="icon"><use href="#icon-minus"/></svg></button>
+          <button id="btn-close-app" class="btn-pixel-icon btn-close" title="关闭/托盘" aria-label="退出程序"><svg class="icon"><use href="#icon-close"/></svg></button>
+        </div>
+      </header>
+      <nav class="nav-tabs no-drag" aria-label="面板导航">
+        <button class="nav-tab active" data-tab="focus" aria-pressed="true" aria-controls="tab-pane-focus">专注</button>
+        <button class="nav-tab" data-tab="alarms" aria-pressed="false" aria-controls="tab-pane-alarms">闹钟</button>
+        <button class="nav-tab" data-tab="stats" aria-pressed="false" aria-controls="tab-pane-stats">统计</button>
+        <button class="nav-tab" data-tab="settings" aria-pressed="false" aria-controls="tab-pane-settings">设置</button>
+      </nav>
+      <main class="tab-content-area">
+        <!-- Focus Tab -->
+        <section id="tab-pane-focus" class="tab-pane active" aria-label="专注计时">
+          <div class="pixel-screen-bezel">
+            <div id="lcd-screen" class="screen-inner no-drag" role="button" tabindex="0" title="点击切换屏幕视窗（数字 / 极简进度 / 音频条）">
+              <div class="screen-status-bar">
+                <span class="screen-tag"><span class="lcd-dot" aria-hidden="true"></span><span id="screen-focus-state">准备就绪</span></span>
+                <span class="screen-mode-hint" id="screen-view-badge">数字</span>
+                <span id="screen-mascot-avatar" class="screen-mascot" aria-hidden="true"></span>
+              </div>
+              <div id="screen-ritual-box" class="screen-ritual-box hidden">
+                <span id="ritual-text" class="ritual-text">深呼吸，放空杂念…</span>
+                <span id="ritual-count" class="ritual-count">3</span>
+              </div>
+              <div id="screen-digits-view" class="screen-center-box">
+                <div id="big-timer-digits" class="screen-big-digits" aria-label="剩余时间">25:00</div>
+                <span id="screen-duration-label" class="screen-duration">25 分钟专注</span>
+              </div>
+              <div id="screen-minimal-view" class="screen-center-box hidden">
+                <div id="minimal-status-label" class="screen-minimal-title">约 25 分钟</div>
+                <span id="minimal-sub-label" class="screen-duration">不看秒数，沉浸当下</span>
+              </div>
+              <div id="screen-spectrum-view" class="screen-center-box hidden">
+                <div id="lcd-spectrum-bars" class="lcd-spectrum-bars" aria-hidden="true"></div>
+                <span id="spectrum-time-label" class="screen-duration">25:00 · 声景运行中</span>
+              </div>
+              <div id="screen-segments" class="screen-segments-bar" aria-hidden="true"></div>
+              <div class="screen-footer"><span id="screen-companion-tag">篝火陪伴中</span><span id="screen-footer-note">慢慢来，也很好</span></div>
+            </div>
+          </div>
+
+          <p id="mascot-focus-status" class="screen-subtext" role="status">准备好，专注一件事</p>
+
+          <div class="task-row no-drag">
+            <label class="task-input-box" for="task-input">
+              <span class="terminal-prefix">此刻</span>
+              <input type="text" id="task-input" class="pixel-input" placeholder="想专心做点什么？" maxlength="32">
+            </label>
+          </div>
+
+          <div class="duration-chips no-drag" aria-label="专注时长与模式">
+            <button class="chip" data-mins="15" aria-pressed="false">15m</button>
+            <button class="chip active" data-mins="25" aria-pressed="true">25m</button>
+            <button class="chip" data-mins="45" aria-pressed="false">45m</button>
+            <button class="chip" data-mins="60" aria-pressed="false">60m</button>
+            <button id="btn-mode-stopwatch" class="chip chip-mode" data-mode="stopwatch" aria-pressed="false" title="自由正计时（Flowtime）">正计时</button>
+            <label class="custom-mins-box" title="自定义分钟数 (1-180)">
+              <input type="number" id="custom-mins-input" class="custom-mins-input" min="1" max="180" placeholder="自定" aria-label="自定义专注分钟数">
+            </label>
+          </div>
+
+          <div class="focus-actions no-drag">
+            <button id="btn-console-speaker" class="console-speaker" type="button" title="彩蛋：点击快速静音/恢复环境音" aria-label="点击静音或恢复环境音"><span></span><span></span><span></span><span></span><span></span></button>
+            <button id="btn-focus-reset" class="btn-pixel-large btn-pixel-subtle" title="重置计时"><svg class="icon"><use href="#icon-reset"/></svg><span>重置</span></button>
+            <button id="btn-focus-finish" class="btn-pixel-large btn-pixel-accent hidden" title="结束当前专注并结算"><svg class="icon"><use href="#icon-check"/></svg><span>收工</span></button>
+            <button id="btn-focus-start" class="btn-pixel-large btn-pixel-primary" aria-label="开始专注"><svg class="icon"><use id="focus-play-icon" href="#icon-play"/></svg><span id="focus-start-text">开始</span></button>
+          </div>
+
+          <div class="soundscape-box no-drag">
+            <div class="soundscape-header">
+              <span class="soundscape-title">声学屏障</span>
+              <div class="soundscape-meta">
+                <span id="sound-vol-label" class="vol-indicator" title="主音量，可在设置中调整">80%</span>
+                <button id="btn-toggle-mixer" class="btn-inline-chip" aria-expanded="false" aria-controls="mixer-drawer"><svg class="icon"><use href="#icon-sliders"/></svg><span>混音台</span></button>
+              </div>
+            </div>
+            <div class="soundscape-presets" aria-label="环境声音预设">
+              <button class="sound-chip active" data-preset="none" aria-pressed="true">关闭</button>
+              <button class="sound-chip" data-preset="rain_fire" aria-pressed="false">雨夜壁炉</button>
+              <button class="sound-chip" data-preset="office_shield" aria-pressed="false">办公降噪</button>
+              <button class="sound-chip" data-preset="night_train" aria-pressed="false">深夜列车</button>
+              <button class="sound-chip" data-preset="pixel_zen" aria-pressed="false">像素禅房</button>
+            </div>
+            <div id="mixer-drawer" class="mixer-drawer hidden" aria-label="多轨混音台">
+              <div id="mixer-tracks-list" class="mixer-tracks-grid"></div>
+            </div>
+          </div>
+
+          <div id="card-park-box" class="park-quick-box no-drag">
+            <div class="park-input-row">
+              <input type="text" id="card-park-input" class="pixel-input park-input" placeholder="脑中冒出杂念？敲这里回车暂存，专注完再看" maxlength="60" aria-label="暂存分心念头">
+              <button id="btn-card-park-add" class="btn-pixel btn-pixel-subtle park-add-btn" title="暂存念头">暂存</button>
+            </div>
+            <div id="park-badge-row" class="park-badge-row hidden">
+              <span id="park-count-label">已暂存 0 条念头</span>
+              <button id="btn-view-park-list" class="btn-link-inline">展开查看</button>
+            </div>
+            <div id="park-inline-list" class="park-inline-list hidden"></div>
+          </div>
+        </section>
+
+        <!-- Alarms Tab -->
+        <section id="tab-pane-alarms" class="tab-pane" aria-label="闹钟提醒">
+          <div class="pane-heading compact"><h1>给日常一点提醒</h1><p>普通提醒会在专注中静默排队，紧急提醒准点穿透。</p></div>
+          <div id="deferred-alarms-banner" class="info-banner hidden" role="status"></div>
+          <div class="alarm-create-box no-drag">
+            <div class="alarm-create-row">
+              <label class="field-label" for="alarm-time-input">提醒时间<input type="time" id="alarm-time-input" class="pixel-input time-input" value="12:00"></label>
+              <label class="field-label" for="alarm-repeat-select">重复<select id="alarm-repeat-select" class="pixel-select"><option value="daily">每天</option><option value="workday">工作日（周一至五）</option><option value="once">仅一次</option></select></label>
+              <label class="field-label" for="alarm-priority-select">级别<select id="alarm-priority-select" class="pixel-select"><option value="normal">普通</option><option value="urgent">紧急</option></select></label>
+            </div>
+            <label class="field-label alarm-desc-label" for="alarm-desc-input">提醒事项<input type="text" id="alarm-desc-input" class="pixel-input" placeholder="例如：喝水、开会、站立拉伸" maxlength="30"></label>
+            <button id="btn-add-alarm" class="btn-pixel btn-pixel-primary">添加提醒</button>
+          </div>
+          <h2 class="section-label">我的提醒</h2>
+          <div id="alarms-list" class="alarms-list no-drag"></div>
+        </section>
+
+        <!-- Stats Tab -->
+        <section id="tab-pane-stats" class="tab-pane" aria-label="专注统计">
+          <div class="sub-tabs no-drag" role="tablist" aria-label="统计子视图">
+            <button class="sub-tab active" data-subtab="overview" aria-pressed="true">概览</button>
+            <button class="sub-tab" data-subtab="shelf" aria-pressed="false">收藏架</button>
+            <button class="sub-tab" data-subtab="receipt" aria-pressed="false">今日小票</button>
+          </div>
+
+          <div id="stats-sub-overview" class="sub-pane active">
+            <div class="stats-grid no-drag">
+              <div class="stat-card"><span class="stat-label">今日专注</span><span id="stat-today-minutes" class="stat-val">0m</span><span id="stat-total-minutes" class="stat-sub">累计 0 分钟</span></div>
+              <div class="stat-card"><span class="stat-label">完成专注</span><span id="stat-today-sessions" class="stat-val">0</span><span class="stat-sub">个完整周期</span></div>
+            </div>
+            <div class="heat-card no-drag">
+              <div class="heat-header"><h2>最近 7 天</h2><span>单位：分钟</span></div>
+              <div id="heat-bars-container" class="pixel-heat-bars" aria-label="最近七天专注分钟数"></div>
+            </div>
+            <div class="heat-card mini-heatmap-card no-drag">
+              <div class="heat-header"><h2>近 28 天像素印记</h2><span id="heatmap-active-days">0 天点亮</span></div>
+              <div id="pixel-month-grid" class="pixel-month-grid" aria-label="近二十八天专注热力图"></div>
+            </div>
+            <div class="session-log-box no-drag">
+              <div class="heat-header"><h2>今日专注记录</h2><span id="session-log-count">0 条</span></div>
+              <div id="today-sessions-list" class="today-sessions-list"></div>
+            </div>
+          </div>
+
+          <div id="stats-sub-shelf" class="sub-pane">
+            <div class="milestone-card no-drag">
+              <div class="heat-header"><h2>彩蛋外壳解锁进度</h2><span id="milestone-progress-text">0 / 120m</span></div>
+              <div class="milestone-bar"><div id="milestone-bar-fill" class="milestone-bar-fill"></div></div>
+              <p id="milestone-hint-text" class="chart-hint">纯正向累计，永不因中断清零</p>
+            </div>
+            <div class="shelf-card no-drag">
+              <div class="heat-header"><h2>伴侣收藏架</h2><span id="shelf-count-text">0 件成果</span></div>
+              <div id="pixel-shelf-grid" class="pixel-shelf-grid"></div>
+            </div>
+          </div>
+
+          <div id="stats-sub-receipt" class="sub-pane">
+            <div class="receipt-actions no-drag">
+              <button id="btn-copy-receipt-md" class="btn-pixel btn-pixel-subtle">复制 Markdown</button>
+              <button id="btn-export-receipt-png" class="btn-pixel btn-pixel-primary">导出 PNG 小票</button>
+            </div>
+            <div id="receipt-preview-box" class="receipt-paper no-drag" aria-label="今日专注热敏小票"></div>
+            <p id="receipt-feedback" class="screen-subtext" role="status"></p>
+          </div>
+        </section>
+
+        <!-- Settings Tab -->
+        <section id="tab-pane-settings" class="tab-pane" aria-label="偏好设置">
+          <div class="sub-tabs no-drag" role="tablist" aria-label="设置分区">
+            <button class="sub-tab active" data-settings-sub="look" aria-pressed="true">外观</button>
+            <button class="sub-tab" data-settings-sub="guard" aria-pressed="false">防打扰</button>
+            <button class="sub-tab" data-settings-sub="window" aria-pressed="false">窗口热键</button>
+            <button class="sub-tab" data-settings-sub="timer" aria-pressed="false">计时声音</button>
+          </div>
+
+          <div id="settings-sub-look" class="sub-pane active settings-group no-drag">
+            <div class="settings-section">
+              <h2 class="settings-title">选一位像素伴侣</h2>
+              <div class="mascot-picker">
+                <button class="mascot-card active" data-mascot="fire" aria-pressed="true"><span class="mascot-preview" id="preview-mascot-fire" aria-hidden="true"></span><span class="mascot-name">篝火</span></button>
+                <button class="mascot-card" data-mascot="cat" aria-pressed="false"><span class="mascot-preview" id="preview-mascot-cat" aria-hidden="true"></span><span class="mascot-name">猫猫</span></button>
+                <button class="mascot-card" data-mascot="coffee" aria-pressed="false"><span class="mascot-preview" id="preview-mascot-coffee" aria-hidden="true"></span><span class="mascot-name">咖啡</span></button>
+                <button class="mascot-card" data-mascot="sprout" aria-pressed="false"><span class="mascot-preview" id="preview-mascot-sprout" aria-hidden="true"></span><span class="mascot-name">树苗</span></button>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h2 class="settings-title">掌机配色（基础 6 款 + 2 款彩蛋）</h2>
+              <div class="theme-picker">
+                <button class="theme-btn active" data-theme="cyber" aria-pressed="true"><span class="theme-swatch swatch-mist" aria-hidden="true"></span><span>雾灰</span></button>
+                <button class="theme-btn" data-theme="gameboy" aria-pressed="false"><span class="theme-swatch swatch-forest" aria-hidden="true"></span><span>经典绿</span></button>
+                <button class="theme-btn" data-theme="sunset" aria-pressed="false"><span class="theme-swatch swatch-sand" aria-hidden="true"></span><span>暖砂</span></button>
+                <button class="theme-btn" data-theme="lavender" aria-pressed="false"><span class="theme-swatch swatch-lavender" aria-hidden="true"></span><span>雾紫</span></button>
+                <button class="theme-btn" data-theme="obsidian" aria-pressed="false"><span class="theme-swatch swatch-obsidian" aria-hidden="true"></span><span>黑曜石</span></button>
+                <button class="theme-btn" data-theme="phosphor" aria-pressed="false"><span class="theme-swatch swatch-phosphor" aria-hidden="true"></span><span>夜光绿</span></button>
+                <button class="theme-btn theme-locked" data-theme="atomic" aria-pressed="false" title="累计专注 120 分钟解锁"><span class="theme-swatch swatch-atomic" aria-hidden="true"></span><span class="theme-name">透明紫</span></button>
+                <button class="theme-btn theme-locked" data-theme="famicom" aria-pressed="false" title="累计专注 300 分钟解锁"><span class="theme-swatch swatch-famicom" aria-hidden="true"></span><span class="theme-name">掌机红</span></button>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-hide-seconds">隐匿秒数显示</label><span class="settings-desc">专注时仅显示约剩余分钟，减轻时间焦虑</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-hide-seconds" aria-label="隐匿秒数显示"><span class="pixel-slider"></span></label>
+            </div>
+          </div>
+
+          <div id="settings-sub-guard" class="sub-pane settings-group no-drag">
+            <div class="settings-item first">
+              <div class="settings-info"><label class="settings-name" for="toggle-guard-enabled">启用分心守卫</label><span class="settings-desc">纯本地检测前台窗口，发现分心由像素伴侣提醒</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-guard-enabled" aria-label="启用分心守卫"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-guard-strict">严格护航档</label><span class="settings-desc">停留超时弹掌机拉回卡，支持临时放行 3 分钟</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-guard-strict" aria-label="严格护航档"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="guard-delay-input">触发宽限（秒）</label><span class="settings-desc">切到分心窗口超过此时长再提醒（5–120 秒）</span></div>
+              <input type="number" id="guard-delay-input" class="pixel-input compact-num" min="5" max="120" value="15" aria-label="分心触发秒数">
+            </div>
+            <div class="settings-section guard-rules-box">
+              <label class="settings-title" for="guard-rules-input">分心关键词 / 进程名（逗号或换行分隔）</label>
+              <textarea id="guard-rules-input" class="pixel-textarea" rows="3" placeholder="例如：bilibili, 抖音, 微博, steam, 微信"></textarea>
+              <div class="guard-actions-row">
+                <button id="btn-save-guard-rules" class="btn-pixel btn-pixel-primary compact-btn">保存规则</button>
+                <button id="btn-open-win-dnd" class="btn-pixel btn-pixel-subtle compact-btn">打开系统勿扰设置</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="settings-sub-window" class="sub-pane settings-group no-drag">
+            <div class="settings-item first">
+              <div class="settings-info"><label class="settings-name" for="toggle-ontop">始终置顶</label><span class="settings-desc">让专注机保持在其他窗口上方</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-ontop" checked aria-label="始终置顶"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-snap">边缘吸附</label><span class="settings-desc">拖动后自动贴近屏幕边缘并记住位置</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-snap" checked aria-label="边缘吸附"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-hover-fade">移开半透明</label><span class="settings-desc">鼠标移开胶囊态时柔和降透，降低遮挡感</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-hover-fade" aria-label="移开半透明"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-edge-peek">靠边缩耳标</label><span class="settings-desc">贴左右屏边且未悬停时自动缩为细条进度带</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-edge-peek" aria-label="靠边缩耳标"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-close-tray">关闭时驻留托盘</label><span class="settings-desc">点关闭先藏进系统托盘，继续跑闹钟和白噪音</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-close-tray" checked aria-label="关闭时驻留托盘"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-hotkeys">启用全局快捷键</label><span class="settings-desc">Alt+Shift+Space/F/N/M（启停/展开/暂存/静音）</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-hotkeys" checked aria-label="启用全局快捷键"><span class="pixel-slider"></span></label>
+            </div>
+          </div>
+
+          <div id="settings-sub-timer" class="sub-pane settings-group no-drag">
+            <div class="settings-item first">
+              <div class="settings-info"><label class="settings-name" for="toggle-flow-overtime">心流顺延模式</label><span class="settings-desc">到点轻响并转为 +00:00 顺延，手动收工不打断</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-flow-overtime" checked aria-label="心流顺延模式"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-launch-ritual">3 秒呼吸入定仪式</label><span class="settings-desc">开工前 3 秒 LCD 呼吸过渡与复古卡带咔哒声</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-launch-ritual" checked aria-label="开工呼吸仪式"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-audio-follow">环境音随专注联动</label><span class="settings-desc">开始专注柔和淡入，暂停自动淡出</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-audio-follow" checked aria-label="环境音随专注联动"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="toggle-gentle">柔和唤醒闹铃</label><span class="settings-desc">闹铃音量与音阶从轻到响，逐渐提醒</span></div>
+              <label class="pixel-switch"><input type="checkbox" id="toggle-gentle" checked aria-label="柔和唤醒"><span class="pixel-slider"></span></label>
+            </div>
+            <div class="settings-item volume-item">
+              <div class="settings-info"><label class="settings-name" for="volume-slider">主音量</label><span class="settings-desc">控制全部环境音与提醒音效</span></div>
+              <input type="range" id="volume-slider" min="0" max="100" value="80" class="pixel-range" aria-label="主音量">
+            </div>
+            <div class="settings-item">
+              <div class="settings-info"><label class="settings-name" for="short-break-input">短休 / 长休（分钟）</label><span class="settings-desc">每 4 轮专注推荐一次长休息</span></div>
+              <div class="dual-num-inputs">
+                <input type="number" id="short-break-input" class="pixel-input compact-num" min="1" max="30" value="5" aria-label="短休息分钟">
+                <span>/</span>
+                <input type="number" id="long-break-input" class="pixel-input compact-num" min="5" max="60" value="15" aria-label="长休息分钟">
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer class="console-footer" aria-hidden="true"><span class="footer-groove"></span><span>留一刻，给自己</span><span class="footer-groove"></span></footer>
+    </div>
+
+    <!-- Alarm Overlay -->
+    <div id="alarm-overlay" class="pixel-modal-overlay no-drag">
+      <div class="pixel-dialog" role="dialog" aria-modal="true" aria-labelledby="ring-title" aria-describedby="ring-time">
+        <div class="dialog-icon-pixel"><svg class="icon"><use href="#icon-bell"/></svg></div>
+        <p class="dialog-eyebrow">到提醒时间了</p>
+        <h2 id="ring-title" class="dialog-title">提醒事项</h2>
+        <p id="ring-time" class="dialog-time">时间已到：12:00</p>
+        <div class="dialog-actions">
+          <button id="btn-alarm-snooze" class="btn-pixel btn-pixel-subtle">延后 5 分钟</button>
+          <button id="btn-alarm-dismiss" class="btn-pixel btn-pixel-primary">知道了</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Celebrate & Session Settlement Overlay -->
+    <div id="celebrate-overlay" class="pixel-modal-overlay no-drag">
+      <div class="pixel-dialog" role="dialog" aria-modal="true" aria-labelledby="celebrate-title" aria-describedby="celebrate-detail">
+        <div id="celebrate-icon-box" class="dialog-icon-pixel"><svg class="icon"><use href="#icon-check"/></svg></div>
+        <p id="celebrate-eyebrow" class="dialog-eyebrow">又积累了一点</p>
+        <h2 id="celebrate-title" class="dialog-title">这一刻，专注完成</h2>
+        <p id="celebrate-detail" class="dialog-time">现在，给自己一个小小的休息。</p>
+        <div id="celebrate-unlock-banner" class="unlock-banner hidden"></div>
+        <div id="celebrate-park-summary" class="dialog-park-box hidden">
+          <p class="dialog-park-heading">本轮暂存的念头</p>
+          <div id="celebrate-park-list" class="dialog-park-list"></div>
+        </div>
+        <div class="dialog-actions">
+          <button id="btn-celebrate-break" class="btn-pixel btn-pixel-subtle">休息 5 分钟</button>
+          <button id="btn-celebrate-dismiss" class="btn-pixel btn-pixel-primary">收下休息</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Strict Focus Guard Overlay -->
+    <div id="guard-overlay" class="pixel-modal-overlay no-drag">
+      <div class="pixel-dialog" role="dialog" aria-modal="true" aria-labelledby="guard-title" aria-describedby="guard-detail">
+        <div id="guard-mascot-icon" class="dialog-icon-pixel"><svg class="icon"><use href="#icon-shield"/></svg></div>
+        <p class="dialog-eyebrow">分心守卫轻提醒</p>
+        <h2 id="guard-title" class="dialog-title">嘿，思绪飘走啦</h2>
+        <p id="guard-detail" class="dialog-time">咱们还在专注当前任务呢，要回到轨道吗？</p>
+        <div class="dialog-actions">
+          <button id="btn-guard-allow" class="btn-pixel btn-pixel-subtle">临时放行 3 分钟</button>
+          <button id="btn-guard-return" class="btn-pixel btn-pixel-primary">回到专注</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="mascots.js"></script>
+  <script src="audio.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
