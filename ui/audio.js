@@ -17,10 +17,10 @@ const AMBIENT_TRACK_META = [
 ];
 
 const AUDIO_PRESETS = {
-  rain_fire: { label: '雨夜壁炉', tracks: { rain: 55, fire: 45 } },
-  office_shield: { label: '办公降噪', tracks: { shield: 70, cafe: 20 } },
-  night_train: { label: '深夜列车', tracks: { train: 65, rain: 30 } },
-  pixel_zen: { label: '像素禅房', tracks: { zen: 60, study: 35 } }
+  rain_fire: { label: '雨夜壁炉', tracks: { rain: 50, fire: 82 } },
+  office_shield: { label: '办公降噪', tracks: { shield: 75, cafe: 22 } },
+  night_train: { label: '深夜列车', tracks: { train: 85, rain: 28 } },
+  pixel_zen: { label: '像素禅房', tracks: { zen: 62, study: 38, shield: 15 } }
 };
 
 class SoundEngine {
@@ -44,6 +44,7 @@ class SoundEngine {
     this.ambientMuted = false;
     this.ambientScale = 1.0;
     this._spectrumBuf = null;
+    this._layerCounter = 0;
   }
 
   init() {
@@ -78,13 +79,13 @@ class SoundEngine {
     }
   }
 
-  _ensureAmbientBus(fadeSec = 0.6) {
+  _ensureAmbientBus(fadeSec = 0.85) {
     this.init();
     if (!this.ctx) return null;
     if (!this.ambientGain) {
       const now = this.ctx.currentTime;
       this.ambientGain = this.ctx.createGain();
-      const target = this.ambientMuted ? 0.0001 : 0.28 * this.ambientScale;
+      const target = this.ambientMuted ? 0.0001 : 0.32 * this.ambientScale;
       this.ambientGain.gain.setValueAtTime(0.001, now);
       this.ambientGain.gain.linearRampToValueAtTime(target, now + Math.max(0.05, fadeSec));
       if (this.analyser) {
@@ -97,10 +98,10 @@ class SoundEngine {
     return this.ambientGain;
   }
 
-  _updateAmbientBusGain(fadeSec = 0.35) {
+  _updateAmbientBusGain(fadeSec = 0.45) {
     if (!this.ambientGain || !this.ctx) return;
     const now = this.ctx.currentTime;
-    const target = this.ambientMuted ? 0.0001 : Math.max(0.0001, 0.28 * this.ambientScale);
+    const target = this.ambientMuted ? 0.0001 : Math.max(0.0001, 0.32 * this.ambientScale);
     if (typeof this.ambientGain.gain.cancelScheduledValues === 'function') {
       this.ambientGain.gain.cancelScheduledValues(now);
     }
@@ -113,61 +114,70 @@ class SoundEngine {
     this._updateAmbientBusGain(fadeSec);
   }
 
-  fadeAmbient(active, fadeSec = 0.8) {
+  fadeAmbient(active, fadeSec = 0.85) {
     this.ambientScale = active ? 1.0 : 0.0;
     this._updateAmbientBusGain(fadeSec);
   }
 
-  // Sixteen-second, seam-blended noise beds for distinct ambient textures.
+  // Twenty-four-second equal-power overlap-add noise beds:
+  // continuous across loop wrap with constant RMS energy (no loudness dip or click).
   createNoiseBuffer(type = 'velvet_brown') {
     this.init();
     if (!this.ctx) return null;
     const key = `${type}:${this.ctx.sampleRate}`;
     if (this.noiseBuffers.has(key)) return this.noiseBuffers.get(key);
-    const bufferSize = this.ctx.sampleRate * 16;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+
+    const sampleRate = this.ctx.sampleRate;
+    const bufferSize = sampleRate * 24;
+    const overlap = Math.max(1, Math.min(Math.floor(sampleRate * 0.75), Math.floor(bufferSize / 4)));
+    const warmup = Math.min(sampleRate * 2, 4096);
+    const buffer = this.ctx.createBuffer(1, bufferSize, sampleRate);
     const data = buffer.getChannelData(0);
+    const tail = new Float32Array(overlap);
 
     let lastOut = 0.0;
     let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
 
-    for (let i = 0; i < bufferSize; i++) {
+    const nextSample = () => {
       const white = Math.random() * 2 - 1;
-      if (type === 'white') {
-        data[i] = white;
-      } else if (type === 'soft_pink') {
+      if (type === 'white') return white;
+      if (type === 'soft_pink') {
         b0 = 0.99886 * b0 + white * 0.0555179;
         b1 = 0.99332 * b1 + white * 0.0750759;
         b2 = 0.96900 * b2 + white * 0.1538520;
         b3 = 0.86650 * b3 + white * 0.3104856;
         b4 = 0.55000 * b4 + white * 0.5329522;
         b5 = -0.7616 * b5 - white * 0.0168980;
-        data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.06;
+        const out = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.06;
         b6 = white * 0.115926;
-      } else {
-        lastOut = (lastOut + (0.02 * white)) / 1.02;
-        data[i] = lastOut;
+        return out;
       }
+      lastOut = (lastOut + (0.02 * white)) / 1.02;
+      return lastOut;
+    };
+
+    // Warm up filter state so sample 0 starts in steady-state distribution.
+    for (let i = 0; i < warmup; i++) nextSample();
+    for (let i = 0; i < bufferSize; i++) data[i] = nextSample();
+    // Continue the exact filter trajectory past bufferSize-1 for seamless wraparound.
+    for (let i = 0; i < overlap; i++) tail[i] = nextSample();
+
+    // Equal-power cosine/sine overlap-add: cos^2 + sin^2 = 1 preserves exact RMS across seam.
+    for (let i = 0; i < overlap; i++) {
+      const phase = (i / overlap) * (Math.PI * 0.5);
+      data[i] = tail[i] * Math.cos(phase) + data[i] * Math.sin(phase);
     }
 
-    const crossfade = Math.min(Math.floor(this.ctx.sampleRate * 0.025), Math.floor(bufferSize / 2));
-    if (crossfade > 0) {
-      const seam = (data[0] + data[bufferSize - 1]) / 2;
-      const head = data.slice(0, crossfade);
-      const tail = data.slice(bufferSize - crossfade);
-      if (crossfade === 1) {
-        data[0] = seam;
-        data[bufferSize - 1] = seam;
-      } else {
-        for (let i = 0; i < crossfade; i++) {
-          const mix = i / (crossfade - 1);
-          data[i] = seam * (1 - mix) + head[i] * mix;
-          data[bufferSize - crossfade + i] = tail[i] * (1 - mix) + seam * mix;
-        }
-      }
-    }
+    // Remove residual DC offset (prevents slow brown-noise drift/thumps) before RMS normalization.
+    let sum = 0;
+    for (let i = 0; i < bufferSize; i++) sum += data[i];
+    const mean = sum / bufferSize;
     let energy = 0;
-    for (let i = 0; i < bufferSize; i++) energy += data[i] * data[i];
+    for (let i = 0; i < bufferSize; i++) {
+      const centered = data[i] - mean;
+      data[i] = centered;
+      energy += centered * centered;
+    }
     const scale = 0.18 / Math.sqrt(energy / bufferSize || 1);
     for (let i = 0; i < bufferSize; i++) data[i] *= scale;
 
@@ -189,7 +199,8 @@ class SoundEngine {
   addNoiseLayer(color, filters, volume = 1, track = null) {
     const dest = track ? track.gain : this.ambientGain;
     const source = this.ctx.createBufferSource();
-    source.buffer = this.createNoiseBuffer(color);
+    const buffer = this.createNoiseBuffer(color);
+    source.buffer = buffer;
     source.loop = true;
     let output = source;
     const nodes = [];
@@ -221,7 +232,12 @@ class SoundEngine {
       this.ambientSources.push(source);
       if (!this.currentAmbient) this.currentAmbient = source;
     }
-    source.start();
+
+    // Stagger each layer's start offset so shared noise beds stay decorrelated
+    // (eliminates comb-filtering and prevents multiple layers wrapping together).
+    const duration = buffer ? (buffer.duration || (buffer.length / (buffer.sampleRate || this.ctx.sampleRate || 48000))) : 0;
+    const offset = duration > 0 ? ((this._layerCounter++ * 4.317) % duration) : 0;
+    source.start(0, offset);
     return { source, filters: nodes.slice(0, -1), gain: layerGain };
   }
 
@@ -270,15 +286,15 @@ class SoundEngine {
     schedule();
   }
 
-  createTransientBuffer(duration) {
+  createTransientBuffer(duration, attackSec = 0.004) {
     const sampleRate = this.ctx.sampleRate;
     const size = Math.max(16, Math.floor(sampleRate * duration));
     const buffer = this.ctx.createBuffer(1, size, sampleRate);
     const data = buffer.getChannelData(0);
-    const attack = Math.max(1, Math.floor(sampleRate * 0.002));
+    const attack = Math.max(1, Math.min(Math.floor(size * 0.4), Math.floor(sampleRate * attackSec)));
     for (let i = 0; i < size; i++) {
-      const fadeIn = Math.min(1, i / attack);
-      const fadeOut = Math.pow(Math.max(0, 1 - i / size), 2);
+      const fadeIn = i < attack ? Math.sin((i / attack) * (Math.PI * 0.5)) : 1;
+      const fadeOut = Math.pow(Math.max(0, 1 - i / size), 2.1);
       data[i] = (Math.random() * 2 - 1) * fadeIn * fadeOut;
     }
     return buffer;
@@ -305,10 +321,10 @@ class SoundEngine {
     source.stop(endAt);
   }
 
-  addNoiseTransient({ duration, filters, volume }, track = null) {
+  addNoiseTransient({ duration, filters, volume, attack = 0.004 }, track = null) {
     const dest = track ? track.gain : this.ambientGain;
     const source = this.ctx.createBufferSource();
-    source.buffer = this.createTransientBuffer(duration);
+    source.buffer = this.createTransientBuffer(duration, attack);
     const nodes = [];
     let output = source;
     filters.forEach(settings => {
@@ -322,13 +338,14 @@ class SoundEngine {
     });
     const envelope = this.ctx.createGain();
     const now = this.ctx.currentTime;
+    const rampIn = Math.min(duration * 0.35, Math.max(0.003, attack));
     envelope.gain.setValueAtTime(0.0001, now);
-    envelope.gain.linearRampToValueAtTime(volume, now + 0.002);
+    envelope.gain.linearRampToValueAtTime(volume, now + rampIn);
     envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
     output.connect(envelope);
     envelope.connect(dest);
     nodes.push(envelope);
-    this.trackOneShot(source, nodes, now, now + duration + 0.005, track);
+    this.trackOneShot(source, nodes, now, now + duration + 0.006, track);
   }
 
   addAmbientTone(frequency, volume, duration, partials = [{ ratio: 1, level: 1 }], track = null) {
@@ -340,11 +357,11 @@ class SoundEngine {
       oscillator.type = 'sine';
       oscillator.frequency.setValueAtTime(frequency * partial.ratio, now);
       envelope.gain.setValueAtTime(0.0001, now);
-      envelope.gain.linearRampToValueAtTime(volume * partial.level, now + 0.025);
+      envelope.gain.linearRampToValueAtTime(volume * partial.level, now + 0.04);
       envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
       oscillator.connect(envelope);
       envelope.connect(dest);
-      this.trackOneShot(oscillator, [envelope], now, now + duration + 0.02, track);
+      this.trackOneShot(oscillator, [envelope], now, now + duration + 0.025, track);
     });
   }
 
@@ -355,7 +372,7 @@ class SoundEngine {
     const trackGain = this.ctx.createGain();
     const safeLevel = Math.max(0.0001, Math.min(1, level));
     trackGain.gain.setValueAtTime(0.001, now);
-    trackGain.gain.linearRampToValueAtTime(safeLevel, now + 0.35);
+    trackGain.gain.linearRampToValueAtTime(safeLevel, now + 0.45);
     trackGain.connect(this.ambientGain);
 
     const track = {
@@ -371,190 +388,245 @@ class SoundEngine {
     this.activeTracks.set(type, track);
 
     if (type === 'rain') {
+      // Plush enveloping rainfall: warm low floor + smooth voice-masking mid body + soft fine mist
       this.addNoiseLayer('velvet_brown', [
-        { type: 'highpass', frequency: 45 }, { type: 'lowpass', frequency: 260, Q: 0.55 }
-      ], 0.22, track);
+        { type: 'highpass', frequency: 42 }, { type: 'lowpass', frequency: 240, Q: 0.5 }
+      ], 0.36, track);
       this.addNoiseLayer('soft_pink', [
-        { type: 'highpass', frequency: 220 }, { type: 'lowpass', frequency: 5100, Q: 0.45 }
-      ], 0.34, track);
+        { type: 'highpass', frequency: 180 }, { type: 'lowpass', frequency: 3400, Q: 0.45 }
+      ], 0.48, track);
       this.addNoiseLayer('soft_pink', [
-        { type: 'highpass', frequency: 1600 }, { type: 'lowpass', frequency: 6500, Q: 0.5 }
-      ], 0.04, track);
+        { type: 'highpass', frequency: 1200 }, { type: 'lowpass', frequency: 4800, Q: 0.45 }
+      ], 0.07, track);
 
       this.addAmbientRandomLoop(() => {
         this.addNoiseTransient({
-          duration: 0.026 + Math.random() * 0.025,
+          duration: 0.028 + Math.random() * 0.024,
+          attack: 0.005,
           filters: [
-            { type: 'highpass', frequency: 900 + Math.random() * 700 },
-            { type: 'bandpass', frequency: 2200 + Math.random() * 2200, Q: 0.85 },
-            { type: 'lowpass', frequency: 6200 }
+            { type: 'highpass', frequency: 850 + Math.random() * 550 },
+            { type: 'bandpass', frequency: 1800 + Math.random() * 1500, Q: 0.8 },
+            { type: 'lowpass', frequency: 4400 }
           ],
-          volume: 0.085 + Math.random() * 0.055
+          volume: 0.055 + Math.random() * 0.035
         }, track);
-      }, 350, 1200, track);
+      }, 380, 1250, track);
 
       this.addAmbientRandomLoop(() => {
         this.addNoiseTransient({
-          duration: 0.07 + Math.random() * 0.05,
+          duration: 0.065 + Math.random() * 0.045,
+          attack: 0.006,
           filters: [
-            { type: 'bandpass', frequency: 360 + Math.random() * 420, Q: 2.0 },
-            { type: 'lowpass', frequency: 1350 }
+            { type: 'bandpass', frequency: 340 + Math.random() * 340, Q: 1.6 },
+            { type: 'lowpass', frequency: 1150 }
           ],
-          volume: 0.34 + Math.random() * 0.2
+          volume: 0.17 + Math.random() * 0.11
         }, track);
         this.addNoiseTransient({
-          duration: 0.018 + Math.random() * 0.022,
+          duration: 0.022 + Math.random() * 0.02,
+          attack: 0.004,
           filters: [
-            { type: 'highpass', frequency: 1000 },
-            { type: 'bandpass', frequency: 2400 + Math.random() * 1800, Q: 0.85 }
+            { type: 'highpass', frequency: 900 },
+            { type: 'bandpass', frequency: 1900 + Math.random() * 1200, Q: 0.8 },
+            { type: 'lowpass', frequency: 4200 }
           ],
-          volume: 0.1 + Math.random() * 0.09
+          volume: 0.06 + Math.random() * 0.05
         }, track);
-      }, 800, 2200, track);
+      }, 900, 2400, track);
 
     } else if (type === 'fire') {
+      // Rich crackling fireplace: deep warm hearth + lively dancing flame glow + unmistakable warm wood pops
       this.addNoiseLayer('velvet_brown', [
-        { type: 'lowpass', frequency: 260, Q: 0.65 }
-      ], 0.95, track);
-      this.addNoiseLayer('soft_pink', [
-        { type: 'lowpass', frequency: 1150, Q: 0.65 }
-      ], 0.42, track);
+        { type: 'highpass', frequency: 36 }, { type: 'lowpass', frequency: 280, Q: 0.6 }
+      ], 1.05, track);
+      const glow = this.addNoiseLayer('soft_pink', [
+        { type: 'highpass', frequency: 140 }, { type: 'lowpass', frequency: 1500, Q: 0.55 }
+      ], 0.64, track);
+      this.addAmbientLfo(glow.filters[1].frequency, 0.16, 260, track);
       this.addAmbientRandomLoop(() => {
-        const duration = 0.012 + Math.random() * 0.035;
+        const duration = 0.014 + Math.random() * 0.026;
         this.addNoiseTransient({
           duration,
-          filters: [{ type: 'bandpass', frequency: 1100 + Math.random() * 3800, Q: 0.75 }],
-          volume: 0.2 + Math.random() * 0.22
+          attack: 0.002,
+          filters: [
+            { type: 'bandpass', frequency: 1500 + Math.random() * 2300, Q: 1.05 },
+            { type: 'lowpass', frequency: 5200 }
+          ],
+          volume: 0.38 + Math.random() * 0.34
         }, track);
-        if (Math.random() < 0.18) {
+        if (Math.random() < 0.42) {
           this.addNoiseTransient({
-            duration: 0.025 + Math.random() * 0.035,
-            filters: [{ type: 'lowpass', frequency: 650 + Math.random() * 500 }],
-            volume: 0.16 + Math.random() * 0.14
+            duration: 0.028 + Math.random() * 0.03,
+            attack: 0.003,
+            filters: [
+              { type: 'bandpass', frequency: 550 + Math.random() * 550, Q: 1.35 },
+              { type: 'lowpass', frequency: 1600 }
+            ],
+            volume: 0.28 + Math.random() * 0.22
           }, track);
         }
       }, 130, 1050, track);
 
     } else if (type === 'cafe') {
+      // Cozy cafe murmur: warm room floor + speech-band blanket + slow drifting vocal formants
       this.addNoiseLayer('velvet_brown', [
-        { type: 'lowpass', frequency: 240, Q: 0.6 }
-      ], 0.42, track);
+        { type: 'highpass', frequency: 38 }, { type: 'lowpass', frequency: 230, Q: 0.55 }
+      ], 0.50, track);
+      this.addNoiseLayer('soft_pink', [
+        { type: 'highpass', frequency: 180 }, { type: 'lowpass', frequency: 2200, Q: 0.45 }
+      ], 0.22, track);
       [
-        { frequency: 310, volume: 0.38, drift: 42, rate: 0.13 },
-        { frequency: 760, volume: 0.25, drift: 95, rate: 0.17 },
-        { frequency: 1480, volume: 0.13, drift: 170, rate: 0.11 }
+        { frequency: 290, volume: 0.38, drift: 38, rate: 0.08 },
+        { frequency: 720, volume: 0.27, drift: 82, rate: 0.11 },
+        { frequency: 1420, volume: 0.14, drift: 145, rate: 0.07 }
       ].forEach(band => {
         const layer = this.addNoiseLayer('soft_pink', [
           { type: 'highpass', frequency: 140 },
-          { type: 'bandpass', frequency: band.frequency, Q: 0.55 }
+          { type: 'bandpass', frequency: band.frequency, Q: 0.5 }
         ], band.volume, track);
         this.addAmbientLfo(layer.filters[1].frequency, band.rate, band.drift, track);
       });
       this.addAmbientInterval(() => {
-        if (this.activeTracks.get('cafe') !== track || Math.random() > 0.7) return;
-        this.addAmbientTone(1350 + Math.random() * 650, 0.012 + Math.random() * 0.008, 0.45 + Math.random() * 0.35,
-          [{ ratio: 1, level: 1 }, { ratio: 2.72, level: 0.22 }, { ratio: 4.15, level: 0.06 }], track);
+        if (this.activeTracks.get('cafe') !== track || Math.random() > 0.65) return;
+        this.addAmbientTone(1300 + Math.random() * 550, 0.009 + Math.random() * 0.006, 0.5 + Math.random() * 0.35,
+          [{ ratio: 1, level: 1 }, { ratio: 2.72, level: 0.18 }, { ratio: 4.15, level: 0.04 }], track);
       }, 7000, track);
 
     } else if (type === 'white') {
+      // Velvet-contoured broadband masking noise (rolls off harsh >5.5kHz ear fatigue)
       this.addNoiseLayer('white', [
-        { type: 'highpass', frequency: 80 }, { type: 'lowpass', frequency: 10500, Q: 0.5 }
-      ], 0.72, track);
+        { type: 'highpass', frequency: 90 }, { type: 'lowpass', frequency: 5500, Q: 0.5 }
+      ], 0.66, track);
 
     } else if (type === 'zen') {
+      // Silky mountain breeze + warm speech-masking floor + mellow pentatonic wind chimes
       this.addNoiseLayer('velvet_brown', [
-        { type: 'lowpass', frequency: 190, Q: 0.6 }
-      ], 0.55, track);
+        { type: 'highpass', frequency: 36 }, { type: 'lowpass', frequency: 200, Q: 0.55 }
+      ], 0.62, track);
       this.addNoiseLayer('soft_pink', [
-        { type: 'lowpass', frequency: 520, Q: 0.55 }
-      ], 0.76, track);
+        { type: 'highpass', frequency: 130 }, { type: 'lowpass', frequency: 820, Q: 0.5 }
+      ], 0.78, track);
       const windLayer = this.addNoiseLayer('soft_pink', [
-        { type: 'highpass', frequency: 900 }, { type: 'lowpass', frequency: 4200, Q: 0.4 }
-      ], 0.18, track);
-      this.addAmbientLfo(windLayer.filters[1].frequency, 0.055, 950, track);
+        { type: 'highpass', frequency: 700 }, { type: 'lowpass', frequency: 2800, Q: 0.42 }
+      ], 0.22, track);
+      this.addAmbientLfo(windLayer.filters[1].frequency, 0.038, 650, track);
       this.addAmbientInterval(() => {
-        if (this.activeTracks.get('zen') !== track || Math.random() > 0.68) return;
+        if (this.activeTracks.get('zen') !== track || Math.random() > 0.65) return;
         const pentatonic = [523.25, 659.25, 783.99, 987.77, 1046.5];
         const freq = pentatonic[Math.floor(Math.random() * pentatonic.length)];
-        this.addAmbientTone(freq, 0.075 + Math.random() * 0.025, 3.2,
-          [{ ratio: 1, level: 1 }, { ratio: 2.76, level: 0.22 }, { ratio: 5.4, level: 0.08 }], track);
+        this.addAmbientTone(freq, 0.075 + Math.random() * 0.015, 3.8,
+          [{ ratio: 1, level: 1 }, { ratio: 2.76, level: 0.14 }, { ratio: 5.4, level: 0.04 }], track);
       }, 4000, track);
 
     } else if (type === 'shield') {
-      // Speech-band acoustic masking: deep velvet rumble + warm vocal-range pink cocoon
+      // Dedicated speech-band acoustic cocoon: warm brown base + lush vocal-range pink blanket
       this.addNoiseLayer('velvet_brown', [
-        { type: 'highpass', frequency: 38 }, { type: 'lowpass', frequency: 310, Q: 0.55 }
-      ], 0.85, track);
+        { type: 'highpass', frequency: 40 }, { type: 'lowpass', frequency: 280, Q: 0.55 }
+      ], 0.90, track);
       this.addNoiseLayer('soft_pink', [
-        { type: 'highpass', frequency: 240 }, { type: 'lowpass', frequency: 2900, Q: 0.45 }
-      ], 0.62, track);
+        { type: 'highpass', frequency: 180 }, { type: 'lowpass', frequency: 2400, Q: 0.5 }
+      ], 0.78, track);
       const airLayer = this.addNoiseLayer('soft_pink', [
-        { type: 'bandpass', frequency: 1100, Q: 0.5 }
-      ], 0.28, track);
-      this.addAmbientLfo(airLayer.filters[0].frequency, 0.04, 180, track);
+        { type: 'bandpass', frequency: 1200, Q: 0.45 },
+        { type: 'lowpass', frequency: 3400, Q: 0.5 }
+      ], 0.26, track);
+      this.addAmbientLfo(airLayer.filters[0].frequency, 0.025, 120, track);
 
     } else if (type === 'train') {
-      // Midnight carriage hum + rhythmic soft rail-joint pulse
+      // Distinct midnight sleeper carriage: low rail resonance + swaying wind + iconic 4-beat cushioned rail-joint cadence
       this.addNoiseLayer('velvet_brown', [
-        { type: 'highpass', frequency: 32 }, { type: 'lowpass', frequency: 185, Q: 0.7 }
-      ], 1.0, track);
+        { type: 'highpass', frequency: 38 }, { type: 'lowpass', frequency: 185, Q: 0.7 }
+      ], 0.85, track);
+      const railRoll = this.addNoiseLayer('soft_pink', [
+        { type: 'bandpass', frequency: 320, Q: 1.7 }
+      ], 0.44, track);
+      this.addAmbientLfo(railRoll.filters[0].frequency, 0.43, 55, track);
       const cabinWind = this.addNoiseLayer('soft_pink', [
-        { type: 'highpass', frequency: 140 }, { type: 'lowpass', frequency: 1200, Q: 0.5 }
-      ], 0.26, track);
-      this.addAmbientLfo(cabinWind.filters[1].frequency, 0.09, 220, track);
-      this.addAmbientInterval(() => {
-        if (this.activeTracks.get('train') !== track) return;
+        { type: 'highpass', frequency: 260 }, { type: 'lowpass', frequency: 1550, Q: 0.5 }
+      ], 0.34, track);
+      this.addAmbientLfo(cabinWind.filters[1].frequency, 0.08, 340, track);
+
+      const playRailClack = (bodyVol, woodyVol, pitchShift = 0) => {
+        // Low cushioned wheel thud
         this.addNoiseTransient({
-          duration: 0.09,
-          filters: [{ type: 'lowpass', frequency: 190, Q: 0.9 }],
-          volume: 0.42
+          duration: 0.105,
+          attack: 0.008,
+          filters: [{ type: 'lowpass', frequency: 190 + pitchShift, Q: 0.9 }],
+          volume: bodyVol
         }, track);
-        const beat = setTimeout(() => {
-          this.ambientTimeouts = this.ambientTimeouts.filter(id => id !== beat);
-          track.timeouts = track.timeouts.filter(id => id !== beat);
-          if (this.activeTracks.get('train') !== track) return;
-          this.addNoiseTransient({
-            duration: 0.08,
-            filters: [{ type: 'lowpass', frequency: 165, Q: 0.85 }],
-            volume: 0.3
-          }, track);
-        }, 230);
-        this.ambientTimeouts.push(beat);
-        track.timeouts.push(beat);
-      }, 1850, track);
+        // Audible woody/steel rail-joint character (240-520Hz) so it reads clearly on speakers & headphones
+        this.addNoiseTransient({
+          duration: 0.075,
+          attack: 0.005,
+          filters: [
+            { type: 'bandpass', frequency: 310 + pitchShift * 2, Q: 1.5 },
+            { type: 'lowpass', frequency: 900 }
+          ],
+          volume: woodyVol
+        }, track);
+      };
+
+      const triggerBogieCycle = () => {
+        if (this.activeTracks.get('train') !== track) return;
+        // Front bogie pair ("ku-dong") + rear bogie pair ("ku-dong")
+        const pattern = [
+          { delay: 0, body: 0.56, woody: 0.44, shift: 12 },
+          { delay: 195, body: 0.44, woody: 0.34, shift: -10 },
+          { delay: 720, body: 0.48, woody: 0.38, shift: 6 },
+          { delay: 915, body: 0.38, woody: 0.28, shift: -14 }
+        ];
+        pattern.forEach(hit => {
+          if (hit.delay === 0) {
+            playRailClack(hit.body, hit.woody, hit.shift);
+            return;
+          }
+          const beat = setTimeout(() => {
+            this.ambientTimeouts = this.ambientTimeouts.filter(id => id !== beat);
+            track.timeouts = track.timeouts.filter(id => id !== beat);
+            if (this.activeTracks.get('train') !== track) return;
+            playRailClack(hit.body, hit.woody, hit.shift);
+          }, hit.delay);
+          this.ambientTimeouts.push(beat);
+          track.timeouts.push(beat);
+        });
+      };
+
+      triggerBogieCycle();
+      this.addAmbientInterval(triggerBogieCycle, 2250, track);
 
     } else if (type === 'study') {
-      // Quiet library room tone + subtle page turns & pencil whispers
+      // Quiet library room tone + warm masking floor + gentle soft page rustles
       this.addNoiseLayer('velvet_brown', [
-        { type: 'lowpass', frequency: 220, Q: 0.55 }
-      ], 0.36, track);
+        { type: 'highpass', frequency: 38 }, { type: 'lowpass', frequency: 210, Q: 0.55 }
+      ], 0.46, track);
       this.addNoiseLayer('soft_pink', [
-        { type: 'highpass', frequency: 220 }, { type: 'lowpass', frequency: 1800, Q: 0.45 }
-      ], 0.16, track);
+        { type: 'highpass', frequency: 180 }, { type: 'lowpass', frequency: 2000, Q: 0.45 }
+      ], 0.30, track);
       this.addAmbientRandomLoop(() => {
         this.addNoiseTransient({
-          duration: 0.14 + Math.random() * 0.12,
+          duration: 0.16 + Math.random() * 0.12,
+          attack: 0.015,
           filters: [
-            { type: 'highpass', frequency: 650 },
-            { type: 'bandpass', frequency: 1600 + Math.random() * 900, Q: 0.75 },
-            { type: 'lowpass', frequency: 3600 }
+            { type: 'highpass', frequency: 580 },
+            { type: 'bandpass', frequency: 1400 + Math.random() * 750, Q: 0.7 },
+            { type: 'lowpass', frequency: 2600 }
           ],
-          volume: 0.12 + Math.random() * 0.07
+          volume: 0.08 + Math.random() * 0.05
         }, track);
-      }, 2800, 7200, track);
+      }, 3200, 7800, track);
 
     } else if (type === 'binaural') {
-      // Gentle 40Hz focus beat (200Hz L / 240Hz R when stereo panning available)
+      // Warm soothing 40Hz focus beat (180Hz L / 220Hz R when stereo panning available)
       const pairs = [
-        { freq: 200, pan: -0.75 },
-        { freq: 240, pan: 0.75 }
+        { freq: 180, pan: -0.75 },
+        { freq: 220, pan: 0.75 }
       ];
       pairs.forEach(({ freq, pan }) => {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, now);
-        gain.gain.setValueAtTime(0.055, now);
+        gain.gain.setValueAtTime(0.045, now);
         osc.connect(gain);
         if (typeof this.ctx.createStereoPanner === 'function') {
           const panner = this.ctx.createStereoPanner();
@@ -633,7 +705,7 @@ class SoundEngine {
     }
     this.ambientScale = active ? 1.0 : 0.0;
     this._ensureAmbientBus();
-    this._updateAmbientBusGain(0.35);
+    this._updateAmbientBusGain(0.45);
 
     entries.forEach(([id, pct]) => {
       const level = pct / 100;
@@ -646,7 +718,7 @@ class SoundEngine {
         existing.level = level;
         const now = this.ctx.currentTime;
         existing.gain.gain.setValueAtTime(existing.gain.gain.value || level, now);
-        existing.gain.gain.linearRampToValueAtTime(level, now + 0.15);
+        existing.gain.gain.linearRampToValueAtTime(level, now + 0.18);
       }
     });
   }

@@ -253,8 +253,9 @@ function fakeAudio(sampleRate = 32) {
   const parameter = () => ({events: [], setValueAtTime(value) {this.value = value; this.events.push(['set', value]);},
     linearRampToValueAtTime(value) {this.events.push(['linear', value]);}, exponentialRampToValueAtTime(value) {this.events.push(['exponential', value]);}});
   const node = () => {
-    const value = {gain: parameter(), frequency: parameter(), Q: parameter(), connections: [], stopped: false,
-      connect(target) {this.connections.push(target);}, disconnect() {this.connections = [];}, start() {}, stop() {this.stopped = true;}};
+    const value = {gain: parameter(), frequency: parameter(), Q: parameter(), connections: [], stopped: false, startArgs: null,
+      connect(target) {this.connections.push(target);}, disconnect() {this.connections = [];},
+      start(...args) {this.startArgs = args;}, stop() {this.stopped = true;}};
     nodes.push(value); return value;
   };
   return {nodes, state: 'running', currentTime: 0, sampleRate, destination: {},
@@ -291,13 +292,41 @@ test('ambient scenes use distinct noise beds and characteristic layers', () => {
   for (const type of ['fire', 'cafe', 'zen']) assert.equal(scenes[type].timers, 1);
 });
 
-test('looping noise buffers meet cleanly at the repeat boundary', () => {
+test('looping noise buffers keep constant RMS energy across the repeat boundary without dips', () => {
+  const e = fixture(); const audio = fakeAudio(400); e.app.sound.ctx = audio;
+  for (const color of ['white', 'soft_pink', 'velvet_brown']) {
+    const data = e.app.sound.createNoiseBuffer(color).getChannelData(0);
+    assert.equal(data.length, audio.sampleRate * 24);
+    const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
+    assert(Math.abs(mean) < 0.005, `${color} DC offset too high: ${mean}`);
+    const rms = Math.sqrt(data.reduce((sum, value) => sum + value * value, 0) / data.length);
+    assert(Math.abs(rms - 0.18) < 0.01, `${color} overall RMS off: ${rms}`);
+    // Measure energy across the 100ms seam window wrapping end -> start (old bug collapsed here).
+    const halfWin = Math.floor(audio.sampleRate * 0.05);
+    let seamEnergy = 0;
+    for (let i = 0; i < halfWin; i++) {
+      const a = data[data.length - halfWin + i];
+      const b = data[i];
+      seamEnergy += a * a + b * b;
+    }
+    const seamRms = Math.sqrt(seamEnergy / (halfWin * 2));
+    if (color !== 'velvet_brown') {
+      assert(seamRms > rms * 0.65, `${color} seam RMS dropped (audible dip): ${seamRms} vs ${rms}`);
+    } else {
+      assert(Math.abs(data[0] - data[data.length - 1]) < 0.08, `brown wrap step too large: ${Math.abs(data[0] - data[data.length - 1])}`);
+    }
+  }
+});
+
+test('multi-layer ambient tracks stagger buffer start offsets to prevent synchronized seams and phasing', () => {
   const e = fixture(); const audio = fakeAudio(200); e.app.sound.ctx = audio;
-  const data = e.app.sound.createNoiseBuffer('white').getChannelData(0);
-  assert.equal(data.length, audio.sampleRate * 16);
-  assert.equal(data[0], data[data.length - 1]);
-  const rms = Math.sqrt(data.reduce((sum, value) => sum + value * value, 0) / data.length);
-  assert(Math.abs(rms - 0.18) < 0.01);
+  e.app.sound.playAmbient('shield');
+  const offsets = e.app.sound.ambientSources
+    .filter(src => src.buffer)
+    .map(src => src.startArgs?.[1]);
+  assert.equal(offsets.length, 3);
+  assert.equal(new Set(offsets.map(v => v.toFixed(3))).size, 3);
+  e.app.sound.stopAmbient();
 });
 
 test('switching ambience clears every event timer and stops all scene sources', () => {
@@ -524,6 +553,19 @@ test('multi-track mixer blends new acoustic shielding tracks and respects zero m
   assert.equal(e.app.sound.activeTracks.size, 0);
   assert.equal(e.intervals.size, 0);
   assert.equal(e.timeouts.size, 0);
+});
+
+test('rain_fire highlights fireplace clearly and night_train produces distinct rhythmic rail beats', () => {
+  const e = fixture(); const audio = fakeAudio(200); e.app.sound.ctx = audio;
+  e.app.applyAudioPreset('rain_fire', false);
+  assert(e.app.audio.tracks.fire > e.app.audio.tracks.rain);
+  e.app.applyAudioPreset('night_train', false);
+  assert(e.app.audio.tracks.train > e.app.audio.tracks.rain);
+  // First bogie hit plays immediately and schedules the remaining 3 beats in the 4-beat cycle
+  assert(e.timeouts.size >= 3);
+  e.app.sound.stopAmbient();
+  assert.equal(e.timeouts.size, 0);
+  assert.equal(e.intervals.size, 0);
 });
 
 test('priority alarm shield defers normal alarms during active focus and lets urgent alarms through', () => {
